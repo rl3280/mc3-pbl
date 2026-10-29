@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Circuit State Machine</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 640px; margin: 20px auto; padding: 0 12px; }
+  svg { width: 100%; background: #f6f8fa; border-radius: 8px; }
+  .row { margin: 10px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button { padding: 8px 14px; font-size: 15px; cursor: pointer; border: 1px solid #888; border-radius: 6px; background: #fff; }
+  button.sel { background: #0969da; color: #fff; border-color: #0969da; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  .states { display: flex; gap: 6px; }
+  .st { flex: 1; padding: 8px; text-align: center; border: 2px solid #ccc; border-radius: 6px; font-size: 14px; }
+  .st.active { border-color: #0969da; background: #ddf4ff; font-weight: bold; }
+  #info { font-size: 16px; min-height: 2.5em; }
+  small { color: #555; }
+</style>
+</head>
+<body>
+<h2>10 V battery + bulb + resistor</h2>
+
+<svg viewBox="0 0 400 220">
+  <!-- wires -->
+  <path d="M60 60 H340 V160 H60 Z" fill="none" stroke="#333" stroke-width="3"/>
+  <!-- battery (left) -->
+  <rect x="45" y="85" width="30" height="50" fill="#f6f8fa"/>
+  <line x1="45" y1="100" x2="75" y2="100" stroke="#333" stroke-width="4"/>
+  <line x1="55" y1="118" x2="65" y2="118" stroke="#333" stroke-width="4"/>
+  <text x="85" y="114" font-size="14">10 V</text>
+  <!-- resistor (bottom) -->
+  <rect x="150" y="148" width="80" height="24" fill="#f6f8fa" stroke="#333" stroke-width="3" id="resBox"/>
+  <text x="190" y="165" font-size="14" text-anchor="middle" id="resText">none</text>
+  <!-- open-circuit gap marker -->
+  <g id="gap"><line x1="240" y1="150" x2="262" y2="170" stroke="#d1242f" stroke-width="3"/>
+  <line x1="262" y1="150" x2="240" y2="170" stroke="#d1242f" stroke-width="3"/></g>
+  <!-- bulb (top) -->
+  <circle id="glow" cx="200" cy="60" r="55" fill="#ffe14d" opacity="0"/>
+  <circle id="bulb" cx="200" cy="60" r="26" fill="#ddd" stroke="#333" stroke-width="3"/>
+  <path id="fil" d="M188 72 L194 52 L200 66 L206 52 L212 72" fill="none" stroke="#555" stroke-width="2"/>
+  <text id="bulbText" x="200" y="115" font-size="14" text-anchor="middle"></text>
+</svg>
+
+<div class="row" id="resistors"></div>
+<div class="row">
+  <button id="remove">Remove resistor</button>
+  <button id="replace">Replace bulb</button>
+</div>
+
+<div class="states" id="states"></div>
+<p id="info"></p>
+<small>I = 10 V / R. Current ≤ 1 A: dark. 1 A &lt; I ≤ 9 A: lit. I &gt; 9 A: bulb breaks (stays broken until replaced).</small>
+
+<script>
+const V = 10;
+const STATES = {
+  S0: "S0 Open",
+  S1: "S1 Dark",
+  S2: "S2 Lit",
+  S3: "S3 Broken",
+};
+
+const machine = {
+  state: "S0",
+  resistor: null,
+  current() { return this.resistor ? V / this.resistor : 0; },
+  evaluate() {
+    const i = this.current();
+    if (i > 9) return "S3";
+    if (i > 1) return "S2";
+    return "S1";
+  },
+  chooseResistor(r) {
+    if (this.state === "S3") return;
+    this.resistor = r;
+    this.state = this.evaluate();
+  },
+  removeResistor() {
+    if (this.state === "S3") return;
+    this.resistor = null;
+    this.state = "S0";
+  },
+  replaceBulb() {
+    if (this.state !== "S3") return;
+    this.resistor = null;
+    this.state = "S0";
+  },
+};
+
+const $ = id => document.getElementById(id);
+
+[1, 2, 5, 10].forEach(r => {
+  const b = document.createElement("button");
+  b.textContent = r + " Ω";
+  b.dataset.r = r;
+  b.onclick = () => { machine.chooseResistor(r); render(); };
+  $("resistors").appendChild(b);
+});
+Object.entries(STATES).forEach(([k, v]) => {
+  const d = document.createElement("div");
+  d.className = "st"; d.id = k; d.textContent = v;
+  $("states").appendChild(d);
+});
+$("remove").onclick = () => { machine.removeResistor(); render(); };
+$("replace").onclick = () => { machine.replaceBulb(); render(); };
+
+function render() {
+  const s = machine.state, i = machine.current();
+  Object.keys(STATES).forEach(k => $(k).classList.toggle("active", k === s));
+  document.querySelectorAll("#resistors button").forEach(b => {
+    b.classList.toggle("sel", +b.dataset.r === machine.resistor);
+    b.disabled = s === "S3";
+  });
+  $("remove").disabled = s === "S0" || s === "S3";
+  $("replace").disabled = s !== "S3";
+  $("resText").textContent = machine.resistor ? machine.resistor + " Ω" : "none";
+  $("gap").style.display = machine.resistor ? "none" : "";
+  $("glow").setAttribute("opacity", s === "S2" ? 0.5 : 0);
+  $("bulb").setAttribute("fill", s === "S2" ? "#ffe14d" : s === "S3" ? "#555" : "#ddd");
+  $("fil").setAttribute("stroke", s === "S3" ? "#d1242f" : "#555");
+  $("fil").setAttribute("d", s === "S3" ? "M188 72 L196 56 M204 60 L212 72" : "M188 72 L194 52 L200 66 L206 52 L212 72");
+  $("bulbText").textContent = { S0: "", S1: "OFF", S2: "ON", S3: "BROKEN" }[s];
+  $("info").textContent = {
+    S0: "Open circuit: no resistor, I = 0 A. Choose a resistor.",
+    S1: `I = ${i} A (≤ 1 A): not enough current, no light.`,
+    S2: `I = ${i} A: the light is ON.`,
+    S3: `I = ${i} A (> 9 A): the bulb broke! Press "Replace bulb".`,
+  }[s];
+}
+render();
+</script>
+</body>
+</html>
